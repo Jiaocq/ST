@@ -1,0 +1,3 @@
+ram运行步骤
+修改systeminit，该函数运行在main之前；
+使程序入口在ram中
