@@ -1,0 +1,229 @@
+#include "drv_lsm6dsl.h"
+
+#include "mems_conf.h"
+#include "lsm6dsl_reg.h"
+#include "lsm6dsl.h"
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "main.h"
+#include "cmsis_os.h"
+
+#include "string.h"
+
+
+extern osSemaphoreId SPI1BinarySemHandle;
+extern osMutexId SPI1MutexHandle;
+extern SPI_HandleTypeDef hspi1;
+
+LSM6DSL_Object_t obj_lsm6dsl;
+
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+	//close all cs pin
+//	    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_SET);
+	//send a signel
+	   portBASE_TYPE taskWoken = pdFALSE;
+      xSemaphoreGiveFromISR(SPI1BinarySemHandle,&taskWoken);
+	portEND_SWITCHING_ISR( taskWoken );
+
+	
+}
+int32_t lsm6dsl_writereg(void* handle, uint16_t reg, uint8_t *data, uint16_t len)
+{
+    int32_t ret;
+    uint8_t recv;
+    uint8_t transdata = reg & 0x7f;
+    ret = osMutexWait (SPI1MutexHandle, osWaitForever);
+    if(HAL_OK != ret)return ret;
+	
+//		 ret = osSemaphoreWait(SPI1BinarySemHandle, osWaitForever) ;
+//    if(HAL_OK != ret)return ret;
+
+    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_RESET);
+	
+//    ret = HAL_SPI_TransmitReceive_DMA(handle, &transdata, &recv, 1);
+    ret = HAL_SPI_TransmitReceive(handle, &transdata, &recv, 1, 1000);
+    if(HAL_OK != ret)return ret;
+    while(len--)
+    {
+        ret = HAL_SPI_TransmitReceive(handle, data, &recv, 1, 1000);
+        if(HAL_OK != ret)return ret;
+
+    }
+    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_SET);
+    ret = osMutexRelease(SPI1MutexHandle);
+    return ret;
+}
+int32_t lsm6dsl_readreg(void* handle, uint16_t reg, uint8_t *data, uint16_t len)
+{
+    int32_t ret;
+    uint16_t lensize;
+//    uint8_t transdata = (reg | 0x80) & 0xbf;
+		uint8_t* pTxData=NULL;
+	
+    ret = osMutexWait (SPI1MutexHandle, osWaitForever);
+    if(HAL_OK != ret)return ret;
+		//melloc a mempool to contain pTxData, len + len(reg)
+	lensize = len+1;
+	  pTxData= pvPortMalloc(lensize);
+	if(pTxData == NULL){return LSM6DSL_ERROR;}
+	//initalize mempool
+	memset(pTxData,0xff,lensize);
+	*(pTxData)=(reg | 0x80) & 0xbf;
+	
+		//enable cs pin
+    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_RESET);
+    ret = HAL_SPI_TransmitReceive_DMA(handle, pTxData, data, lensize);
+    if(HAL_OK != ret)return ret;
+		//等待传输完成信号量
+		ret = osSemaphoreWait(SPI1BinarySemHandle, osWaitForever) ;
+    if(HAL_OK != ret)return ret;
+	//disable cs pin
+    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_SET);
+	vPortFree(pTxData);
+    ret = osMutexRelease(SPI1MutexHandle);
+    return ret;
+}
+//int32_t lsm6dsl_writereg(void* handle, uint16_t reg, uint8_t *data, uint16_t len)
+//{
+//    int32_t ret;
+//    uint8_t recv;
+//    uint8_t transdata = reg & 0x7f;
+//    ret = osMutexWait (SPI1MutexHandle, osWaitForever);
+//    if(HAL_OK != ret)return ret;
+//	
+////		 ret = osSemaphoreWait(SPI1BinarySemHandle, osWaitForever) ;
+////    if(HAL_OK != ret)return ret;
+
+//    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_RESET);
+//	
+////    ret = HAL_SPI_TransmitReceive_DMA(handle, &transdata, &recv, 1);
+//    ret = HAL_SPI_TransmitReceive(handle, &transdata, &recv, 1, 1000);
+//    if(HAL_OK != ret)return ret;
+//    while(len--)
+//    {
+//        ret = HAL_SPI_TransmitReceive(handle, data, &recv, 1, 1000);
+//        if(HAL_OK != ret)return ret;
+
+//    }
+//    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_SET);
+//    ret = osMutexRelease(SPI1MutexHandle);
+//    return ret;
+//}
+//int32_t lsm6dsl_readreg(void* handle, uint16_t reg, uint8_t *data, uint16_t len)
+//{
+//    int32_t ret;
+//    uint8_t recv;
+//    uint8_t transdata = (reg | 0x80) & 0xbf;
+//    ret = osMutexWait (SPI1MutexHandle, osWaitForever);
+//    if(HAL_OK != ret)return ret;
+////			 ret = osSemaphoreWait(SPI1BinarySemHandle, osWaitForever) ;
+////    if(HAL_OK != ret)return ret;
+
+//    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_RESET);
+////    ret = HAL_SPI_TransmitReceive_DMA(handle, &transdata, &recv, 1);
+//    ret = HAL_SPI_TransmitReceive(handle, &transdata, &recv, 1, 1000);
+//    if(HAL_OK != ret)return ret;
+
+//    transdata = 0xff;
+//    while(len--)
+//    {
+//        ret = HAL_SPI_TransmitReceive(handle, &transdata, data++, 1, 1000);
+//        if(HAL_OK != ret)return ret;
+//    }
+//    HAL_GPIO_WritePin(BSP_LSM6DSL_CS_PORT, BSP_LSM6DSL_CS_PIN, GPIO_PIN_SET);
+//    ret = osMutexRelease(SPI1MutexHandle);
+//    return ret;
+//}
+int32_t LSM6DSL_Init_Fun_user(void)
+{
+    int32_t ret;
+    ret = BSP_LSM6DSL_SPI_DeInit();
+    if(HAL_OK != ret)return ret;
+
+    ret = BSP_LSM6DSL_SPI_Init();
+    if(HAL_OK != ret)return ret;
+
+//    lsm6dsl_apply_spi_settings();
+    return 0;
+}
+int32_t LSM6DSL_DeInit_Fun_user(void)
+{
+    int32_t ret;
+    ret = BSP_LSM6DSL_SPI_DeInit();
+    if(HAL_OK != ret)return ret;
+    return 0;
+}
+int32_t LSM6DSL_GetTick_Fun_user(void)
+{
+    return HAL_GetTick();
+}
+
+LSM6DSL_IO_t  LSM6DSL_IO =
+{
+    LSM6DSL_Init_Fun_user,
+    LSM6DSL_DeInit_Fun_user,
+    LSM6DSL_SPI_4WIRES_BUS,
+    &hspi1,
+    lsm6dsl_writereg,
+    lsm6dsl_readreg,
+    LSM6DSL_GetTick_Fun_user,
+};
+
+
+int32_t lsm6dsl_IMU_init(void)
+{
+    int32_t ret;
+    uint8_t ID;
+    ret = LSM6DSL_RegisterBusIO(&obj_lsm6dsl, &LSM6DSL_IO);
+    if(LSM6DSL_ERROR == ret)return ret;
+    /* init sensor*/
+    ret = LSM6DSL_COMMON_Driver.DeInit(&obj_lsm6dsl);
+    if(LSM6DSL_ERROR == ret)return ret;
+    ret = LSM6DSL_COMMON_Driver.Init(&obj_lsm6dsl);
+    if(LSM6DSL_ERROR == ret)return ret;
+    ret = LSM6DSL_COMMON_Driver.ReadID(&obj_lsm6dsl, &ID);
+    if(LSM6DSL_ERROR == ret)return ret;
+    if(0x6a != ID)
+    {
+        osPrintf("\r\nID = 0x%x,ID!=0x6a\r\n", ID);
+        return HAL_ERROR;
+    }
+    //acc
+    ret = LSM6DSL_ACC_Driver.Disable(&obj_lsm6dsl);
+    if(LSM6DSL_ERROR == ret)return ret;
+    ret = LSM6DSL_ACC_Driver.Enable(&obj_lsm6dsl);
+    if(LSM6DSL_ERROR == ret)return ret;
+    ret = LSM6DSL_ACC_Driver.SetFullScale(&obj_lsm6dsl, LSM6DSL_ACC_SCALE);
+    if(LSM6DSL_ERROR == ret)return ret;
+    ret = LSM6DSL_ACC_Driver.SetOutputDataRate(&obj_lsm6dsl, LSM6DSL_ACC_SAMPLERATE);
+    if(LSM6DSL_ERROR == ret)return ret;
+//lpf2
+    ret = lsm6dsl_xl_lp2_bandwidth_set(&obj_lsm6dsl.Ctx, LSM6DSL_LPF_A);
+    if(LSM6DSL_ERROR == ret)return ret;
+    //gyo
+
+    ret = LSM6DSL_GYRO_Driver.Disable(&obj_lsm6dsl);
+    if(LSM6DSL_ERROR == ret)return ret;
+    ret = LSM6DSL_GYRO_Driver.Enable(&obj_lsm6dsl);
+    if(LSM6DSL_ERROR == ret)return ret;
+    ret = LSM6DSL_GYRO_Driver.SetFullScale(&obj_lsm6dsl, LSM6DSL_GYO_SCALE);
+    if(LSM6DSL_ERROR == ret)return ret;
+    ret = LSM6DSL_GYRO_Driver.SetOutputDataRate(&obj_lsm6dsl, LSM6DSL_GYO_SAMPLERATE);
+    if(LSM6DSL_ERROR == ret)return ret;
+    //lpf
+    ret = lsm6dsl_gy_band_pass_set(&obj_lsm6dsl.Ctx, LSM6DSL_LPF_G);
+    if(LSM6DSL_ERROR == ret)return ret;
+
+    return HAL_OK;
+}
+
+
+
+
+
+
+
+
+

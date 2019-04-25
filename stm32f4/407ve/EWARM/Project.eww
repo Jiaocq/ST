@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspace>
+    <project>
+        <path>$WS_DIR$\407ve.ewp</path>
+    </project>
+    <batchBuild>
+        <batchDefinition>
+            <name>download</name>
+        </batchDefinition>
+    </batchBuild>
+</workspace>
